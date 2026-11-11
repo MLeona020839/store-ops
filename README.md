@@ -55,6 +55,29 @@ Health checks: `curl localhost:8081/actuator/health`
 Alternatively, run `TestPromotionServiceApplication` / `TestStoreTaskServiceApplication`
 from your IDE: they start the service against throwaway Testcontainers, no compose needed.
 
+## API
+
+`promotion-service`:
+
+| Method | Path | |
+|---|---|---|
+| `POST` | `/promotions` | Create a promotion; `201` with a `Location` header |
+| `GET` | `/promotions/{id}` | One promotion |
+| `GET` | `/promotions?from=2026-11-16` | Running on that day or starting later, soonest first; `from` defaults to today (Europe/Amsterdam) |
+| `POST` | `/promotions/{id}/cancel` | Cancel; idempotent |
+
+```bash
+curl -i localhost:8081/promotions -H 'Content-Type: application/json' -d '{
+  "title": "Alle kipfilet", "label": "25% korting", "kind": "PERCENT_OFF", "percent": 25,
+  "validFrom": "2026-11-16", "validUntil": "2026-11-22",
+  "storeIds": ["store-1001", "store-1002"], "productIds": ["product-42"]
+}'
+```
+
+Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`application/problem+json`):
+`400` for invalid input or a broken business rule (with the reason in `detail`), `404` for an unknown id,
+`409` when the promotion was changed concurrently.
+
 ## Testing
 
 ```bash
@@ -86,8 +109,10 @@ what you chose, what you considered instead, and why. Candidates as you build th
 
 ## Roadmap
 
-- [ ] Promotion CRUD API with validation (`promotion-service`)
-- [ ] Flyway migrations for both databases
+- [x] Promotion API: create, get, list, cancel, with validation (`promotion-service`)
+- [ ] Update a promotion (`PUT` with optimistic locking through `If-Match`)
+- [x] Flyway migration for `promotion-service`
+- [ ] Flyway migration for `store-task-service`
 - [ ] Publish `PromotionEvent` on schedule / cancel
 - [ ] Consume events and create tasks per store (`store-task-service`)
 - [ ] Task API: list open tasks for a store, mark a task done
