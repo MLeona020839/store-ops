@@ -27,13 +27,15 @@ data class PromotionEvent(
     val eventId: UUID,
     val type: PromotionEventType,
     val promotionId: UUID,
-    val productId: String,
+    /** One promotion can cover several products, e.g. 'Alle kipfilet' or a whole soft-drink range. */
+    val productIds: List<String>,
     val storeIds: List<String>,
     val validFrom: LocalDate,
     val validUntil: LocalDate,
     val occurredAt: Instant,
 ) {
     init {
+        require(productIds.isNotEmpty()) { "A promotion must cover at least one product" }
         require(storeIds.isNotEmpty()) { "A promotion must apply to at least one store" }
         require(!validUntil.isBefore(validFrom)) { "validUntil ($validUntil) is before validFrom ($validFrom)" }
     }

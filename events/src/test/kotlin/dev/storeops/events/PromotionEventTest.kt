@@ -8,6 +8,7 @@ import kotlin.test.assertFailsWith
 
 class PromotionEventTest {
     private fun event(
+        productIds: List<String> = listOf("product-42"),
         storeIds: List<String> = listOf("store-1001"),
         validFrom: LocalDate = LocalDate.of(2026, 11, 16),
         validUntil: LocalDate = LocalDate.of(2026, 11, 22),
@@ -15,7 +16,7 @@ class PromotionEventTest {
         eventId = UUID.randomUUID(),
         type = PromotionEventType.SCHEDULED,
         promotionId = UUID.randomUUID(),
-        productId = "product-42",
+        productIds = productIds,
         storeIds = storeIds,
         validFrom = validFrom,
         validUntil = validUntil,
@@ -32,6 +33,16 @@ class PromotionEventTest {
         assertFailsWith<IllegalArgumentException> {
             event(validFrom = LocalDate.of(2026, 11, 22), validUntil = LocalDate.of(2026, 11, 16))
         }
+    }
+
+    @Test
+    fun `accepts a promotion covering several products`() {
+        event(productIds = listOf("product-42", "product-43", "product-44"))
+    }
+
+    @Test
+    fun `rejects a promotion without products`() {
+        assertFailsWith<IllegalArgumentException> { event(productIds = emptyList()) }
     }
 
     @Test
