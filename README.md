@@ -1,6 +1,6 @@
 # store-ops
 
-![CI](https://github.com/OWNER/store-ops/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/MLeona020839/store-ops/actions/workflows/ci.yml/badge.svg)](https://github.com/MLeona020839/store-ops/actions/workflows/ci.yml)
 
 > TODO: one sentence on what this does, e.g. *Event-driven microservices that turn weekly
 > supermarket promotions into shelf-label tasks for store employees.*
