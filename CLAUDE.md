@@ -14,7 +14,7 @@ Two Kotlin/Spring Boot microservices connected through Kafka. See README.md for 
 - Modules: `events` (shared contracts, no Spring), `promotion-service`, `store-task-service`
 - Services never share a database or call each other over HTTP; they communicate only through events in `events`
 - Event contracts stay backwards compatible: add fields, never rename or remove them
-- Persistence: Spring Data JDBC with immutable data classes; schema changes go through Flyway migrations only, never edit an applied migration
+- Persistence: Spring Data JDBC with immutable data classes; schema changes go through Flyway migrations only. Nothing is deployed yet, so V1 could still be edited; from the first deployment on, never edit an applied migration, add a new one
 - Configuration in `application.properties`; secrets come from environment variables, never committed
 - Every new behaviour gets a test. Kafka or database behaviour gets a Testcontainers test, not a mock
 - Pin Docker image versions; keep docker-compose.yml and TestcontainersConfiguration on the same versions

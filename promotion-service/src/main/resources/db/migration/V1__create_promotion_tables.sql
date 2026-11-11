@@ -19,7 +19,7 @@ CREATE TABLE promotion (
     updated_at   timestamptz  NOT NULL DEFAULT now(),
 
     CONSTRAINT promotion_kind_valid CHECK (
-        kind IN ('percent_off', 'promo_price', 'buy_x_pay_y', 'x_for_price', 'second_half_price', 'other')
+        kind IN ('PERCENT_OFF', 'PROMO_PRICE', 'BUY_X_PAY_Y', 'X_FOR_PRICE', 'SECOND_HALF_PRICE', 'OTHER')
     ),
     -- Only states someone decides. Whether a promotion is running follows from the dates,
     -- so it isn't stored and can't go stale.
@@ -29,10 +29,10 @@ CREATE TABLE promotion (
     -- NULL passes, so `percent > 0` alone would let a percent_off promotion without a percent through.
     CONSTRAINT promotion_kind_fields CHECK (
         CASE kind
-            WHEN 'percent_off' THEN percent IS NOT NULL AND percent > 0 AND percent < 100
-            WHEN 'promo_price' THEN price_cents IS NOT NULL AND price_cents > 0
-            WHEN 'buy_x_pay_y' THEN buy IS NOT NULL AND pay IS NOT NULL AND pay > 0 AND buy > pay
-            WHEN 'x_for_price' THEN buy IS NOT NULL AND price_cents IS NOT NULL AND buy >= 1 AND price_cents > 0
+            WHEN 'PERCENT_OFF' THEN percent IS NOT NULL AND percent > 0 AND percent < 100
+            WHEN 'PROMO_PRICE' THEN price_cents IS NOT NULL AND price_cents > 0
+            WHEN 'BUY_X_PAY_Y' THEN buy IS NOT NULL AND pay IS NOT NULL AND pay > 0 AND buy > pay
+            WHEN 'X_FOR_PRICE' THEN buy IS NOT NULL AND price_cents IS NOT NULL AND buy >= 1 AND price_cents > 0
             ELSE true
         END
     )

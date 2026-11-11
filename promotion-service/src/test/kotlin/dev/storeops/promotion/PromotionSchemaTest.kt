@@ -57,12 +57,12 @@ class PromotionSchemaTest(
 
     @Test
     fun `accepts every kind when it has the fields it needs`() {
-        insertPromotion(kind = "percent_off", percent = BigDecimal("25"))
-        insertPromotion(kind = "promo_price", percent = null, priceCents = 299)
-        insertPromotion(kind = "buy_x_pay_y", percent = null, buy = 2, pay = 1)
-        insertPromotion(kind = "x_for_price", percent = null, buy = 2, priceCents = 500)
-        insertPromotion(kind = "second_half_price", percent = null)
-        insertPromotion(kind = "other", percent = null)
+        insertPromotion(kind = "PERCENT_OFF", percent = BigDecimal("25"))
+        insertPromotion(kind = "PROMO_PRICE", percent = null, priceCents = 299)
+        insertPromotion(kind = "BUY_X_PAY_Y", percent = null, buy = 2, pay = 1)
+        insertPromotion(kind = "X_FOR_PRICE", percent = null, buy = 2, priceCents = 500)
+        insertPromotion(kind = "SECOND_HALF_PRICE", percent = null)
+        insertPromotion(kind = "OTHER", percent = null)
     }
 
     @Test
@@ -74,19 +74,19 @@ class PromotionSchemaTest(
 
     @Test
     fun `rejects percent_off without a percent`() {
-        assertViolates("promotion_kind_fields") { insertPromotion(kind = "percent_off", percent = null) }
+        assertViolates("promotion_kind_fields") { insertPromotion(kind = "PERCENT_OFF", percent = null) }
     }
 
     @Test
     fun `rejects buy_x_pay_y where you pay for every pack you get`() {
         assertViolates("promotion_kind_fields") {
-            insertPromotion(kind = "buy_x_pay_y", percent = null, buy = 2, pay = 2)
+            insertPromotion(kind = "BUY_X_PAY_Y", percent = null, buy = 2, pay = 2)
         }
     }
 
     @Test
     fun `rejects an unknown kind`() {
-        assertViolates("promotion_kind_valid") { insertPromotion(kind = "free_lunch") }
+        assertViolates("promotion_kind_valid") { insertPromotion(kind = "FREE_LUNCH") }
     }
 
     @Test
@@ -107,7 +107,7 @@ class PromotionSchemaTest(
     }
 
     private fun insertPromotion(
-        kind: String = "percent_off",
+        kind: String = "PERCENT_OFF",
         percent: BigDecimal? = BigDecimal("25"),
         priceCents: Int? = null,
         buy: Int? = null,
