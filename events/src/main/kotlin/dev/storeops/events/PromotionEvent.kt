@@ -27,6 +27,10 @@ data class PromotionEvent(
     val eventId: UUID,
     val type: PromotionEventType,
     val promotionId: UUID,
+    /** Product (group) as printed, e.g. 'Alle kipfilet'. */
+    val title: String,
+    /** What goes on the shelf label, e.g. '1+1 gratis'. */
+    val label: String,
     /** One promotion can cover several products, e.g. 'Alle kipfilet' or a whole soft-drink range. */
     val productIds: List<String>,
     val storeIds: List<String>,

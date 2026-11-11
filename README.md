@@ -113,11 +113,12 @@ what you chose, what you considered instead, and why. Candidates as you build th
 - [ ] Update a promotion (`PUT` with optimistic locking through `If-Match`)
 - [x] Flyway migration for `promotion-service`
 - [ ] Flyway migration for `store-task-service`
-- [ ] Publish `PromotionEvent` on schedule / cancel
+- [x] Publish `PromotionEvent` on schedule / cancel
 - [ ] Consume events and create tasks per store (`store-task-service`)
 - [ ] Task API: list open tasks for a store, mark a task done
 - [ ] Idempotent consumer + dead-letter topic
-- [ ] Transactional outbox in `promotion-service`
+- [x] Transactional outbox in `promotion-service`
+- [ ] Clean up published outbox rows after a retention period
 - [ ] Testcontainers integration test covering the full flow
 - [ ] Dockerfiles for both services
 - [ ] (Optional) Deploy to Azure Container Apps

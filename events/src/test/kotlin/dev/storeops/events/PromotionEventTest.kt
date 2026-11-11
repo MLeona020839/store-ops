@@ -16,6 +16,8 @@ class PromotionEventTest {
         eventId = UUID.randomUUID(),
         type = PromotionEventType.SCHEDULED,
         promotionId = UUID.randomUUID(),
+        title = "Alle kipfilet",
+        label = "25% korting",
         productIds = productIds,
         storeIds = storeIds,
         validFrom = validFrom,
