@@ -78,6 +78,18 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`
 `400` for invalid input or a broken business rule (with the reason in `detail`), `404` for an unknown id,
 `409` when the promotion was changed concurrently.
 
+`store-task-service` (every path is scoped to one store; another store's task is a `404`):
+
+| Method | Path | |
+|---|---|---|
+| `GET` | `/stores/{storeId}/tasks?until=2026-11-16` | Open tasks due by that day, overdue included, earliest first; `until` defaults to today |
+| `GET` | `/stores/{storeId}/tasks/{taskId}` | One task |
+| `POST` | `/stores/{storeId}/tasks/{taskId}/complete` | Mark done; idempotent. `409` if the task was cancelled |
+
+```bash
+curl -s localhost:8082/stores/store-1001/tasks
+```
+
 ## Testing
 
 ```bash
@@ -115,7 +127,8 @@ what you chose, what you considered instead, and why. Candidates as you build th
 - [x] Flyway migration for `store-task-service`
 - [x] Publish `PromotionEvent` on schedule / cancel
 - [x] Consume events and create tasks per store (`store-task-service`)
-- [ ] Task API: list open tasks for a store, mark a task done
+- [x] Task API: list open tasks for a store, mark a task done
+- [ ] Authentication: employees only see and complete their own store's tasks
 - [x] Idempotent consumer + dead-letter topic
 - [x] Transactional outbox in `promotion-service`
 - [ ] Clean up published outbox rows after a retention period

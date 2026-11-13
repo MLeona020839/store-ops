@@ -51,6 +51,14 @@ data class StoreTask(
         return copy(status = TaskStatus.CANCELLED)
     }
 
+    /** Idempotent: completing a done task keeps the first completion time. A cancelled task can't be completed. */
+    fun complete(at: Instant): StoreTask =
+        when (status) {
+            TaskStatus.OPEN -> copy(status = TaskStatus.DONE, completedAt = at)
+            TaskStatus.DONE -> this
+            TaskStatus.CANCELLED -> throw IllegalStateException("Task $id was cancelled and can't be completed")
+        }
+
     /** Moves the due date forward to [date] if it's later; never pushes it back. */
     fun dueNoLaterThan(date: LocalDate): StoreTask = if (dueDate.isAfter(date)) copy(dueDate = date) else this
 }
