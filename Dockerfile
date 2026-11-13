@@ -22,8 +22,10 @@ COPY events/src events/src
 COPY ${SERVICE}/src ${SERVICE}/src
 
 # The cache mount keeps Gradle's downloads between builds without putting them in the image.
+# sharing=locked: docker compose builds both images at once, and two Gradle processes on one
+# shared cache fight over its lock files; locked makes the second build wait its turn.
 # Tests run in CI before images are built, so they're skipped here.
-RUN --mount=type=cache,target=/root/.gradle \
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
     ./gradlew --no-daemon :${SERVICE}:bootJar -x test \
  && cp "$(find ${SERVICE}/build/libs -name '*.jar' ! -name '*-plain.jar')" application.jar
 
