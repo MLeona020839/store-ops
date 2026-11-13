@@ -27,6 +27,7 @@ class SecurityConfiguration {
                 authorize("/actuator/info", permitAll)
                 authorize(HttpMethod.GET, "/promotions/**", hasAuthority("SCOPE_promotions:read"))
                 authorize(HttpMethod.POST, "/promotions/**", hasAuthority("SCOPE_promotions:write"))
+                authorize(HttpMethod.PUT, "/promotions/**", hasAuthority("SCOPE_promotions:write"))
                 // Anything not listed above is refused, so a new endpoint is closed until someone opens it.
                 authorize(anyRequest, denyAll)
             }

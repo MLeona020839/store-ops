@@ -32,6 +32,7 @@ class PromotionEventHandler(
         when (event.type) {
             PromotionEventType.SCHEDULED -> scheduled(event)
             PromotionEventType.CANCELLED -> cancelled(event)
+            PromotionEventType.UPDATED -> updated(event)
         }
     }
 
@@ -45,7 +46,7 @@ class PromotionEventHandler(
     }
 
     private fun cancelled(event: PromotionEvent) {
-        val cancelledOn = StoreTaskPlanning.cancellationDay(event)
+        val cancelledOn = StoreTaskPlanning.dayOf(event)
         val changes =
             tasks
                 .findAllByPromotionId(event.promotionId)
@@ -64,5 +65,11 @@ class PromotionEventHandler(
         }
         tasks.saveAll(changes)
         log.info("Promotion {} cancelled on {}: {} tasks changed", event.promotionId, cancelledOn, changes.size)
+    }
+
+    private fun updated(event: PromotionEvent) {
+        val changes = StoreTaskPlanning.changesForUpdated(event, tasks.findAllByPromotionId(event.promotionId))
+        tasks.saveAll(changes)
+        log.info("Promotion {} updated: {} tasks created or changed", event.promotionId, changes.size)
     }
 }

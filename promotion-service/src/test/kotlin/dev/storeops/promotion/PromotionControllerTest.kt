@@ -3,6 +3,7 @@ package dev.storeops.promotion
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -18,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -213,5 +215,91 @@ class PromotionControllerTest(
             }.andExpect { status { isForbidden() } }
         mvc.post("/promotions/${UUID.randomUUID()}/cancel") { with(reader) }.andExpect { status { isForbidden() } }
         verify(service, never()).create(any())
+    }
+
+    // ---- ETag / If-Match
+
+    @Test
+    fun `a promotion is returned with its version as ETag`() {
+        val stored = promotion().copy(version = 3)
+        whenever(service.get(stored.id)).thenReturn(stored)
+
+        mvc.get("/promotions/${stored.id}") { with(reader) }.andExpect {
+            status { isOk() }
+            header { string("ETag", "\"3\"") }
+        }
+    }
+
+    @Test
+    fun `an update with the current ETag is applied and returns the new one`() {
+        val stored = promotion()
+        whenever(service.update(eq(stored.id), eq(3), any())).thenReturn(stored.copy(version = 4))
+
+        mvc
+            .put("/promotions/${stored.id}") {
+                with(writer)
+                header("If-Match", "\"3\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = validBody
+            }.andExpect {
+                status { isOk() }
+                header { string("ETag", "\"4\"") }
+            }
+    }
+
+    @Test
+    fun `an update without a usable If-Match is 428`() {
+        val id = UUID.randomUUID()
+        listOf(null, "*", "W/\"3\"", "three").forEach { ifMatch ->
+            mvc
+                .put("/promotions/$id") {
+                    with(writer)
+                    ifMatch?.let { header("If-Match", it) }
+                    contentType = MediaType.APPLICATION_JSON
+                    content = validBody
+                }.andExpect {
+                    status { isEqualTo(428) }
+                    content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+                }
+        }
+        verify(service, never()).update(any(), any(), any())
+    }
+
+    @Test
+    fun `an update based on an outdated version is 412`() {
+        val id = UUID.randomUUID()
+        whenever(service.update(eq(id), eq(2), any())).thenThrow(PromotionVersionMismatchException(id))
+
+        mvc
+            .put("/promotions/$id") {
+                with(writer)
+                header("If-Match", "\"2\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = validBody
+            }.andExpect { status { isPreconditionFailed() } }
+    }
+
+    @Test
+    fun `changing a promotion that can't change is 409, and updating needs promotions-write`() {
+        val id = UUID.randomUUID()
+        whenever(service.update(eq(id), eq(0), any())).thenThrow(PromotionNotChangeableException("Promotion $id was cancelled"))
+
+        mvc
+            .put("/promotions/$id") {
+                with(writer)
+                header("If-Match", "\"0\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = validBody
+            }.andExpect {
+                status { isConflict() }
+                jsonPath("$.detail") { value("Promotion $id was cancelled") }
+            }
+        mvc
+            .put("/promotions/$id") {
+                with(reader)
+                header("If-Match", "\"0\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = validBody
+            }.andExpect { status { isForbidden() } }
     }
 }

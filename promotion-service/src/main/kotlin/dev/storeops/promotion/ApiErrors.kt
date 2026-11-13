@@ -29,6 +29,38 @@ class InvalidPromotionException(
         null,
     )
 
+/** The promotion's state doesn't allow this change (cancelled, ended, or already running). */
+class PromotionNotChangeableException(
+    detail: String,
+) : ErrorResponseException(
+        HttpStatus.CONFLICT,
+        ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail),
+        null,
+    )
+
+/** If-Match named a version that isn't the current one: someone else changed the promotion first. */
+class PromotionVersionMismatchException(
+    id: UUID,
+) : ErrorResponseException(
+        HttpStatus.PRECONDITION_FAILED,
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.PRECONDITION_FAILED,
+            "Promotion $id was changed since you read it; GET it again and reapply your change",
+        ),
+        null,
+    )
+
+/** A change without If-Match could silently overwrite someone else's, so it isn't accepted. */
+class IfMatchRequiredException :
+    ErrorResponseException(
+        HttpStatus.PRECONDITION_REQUIRED,
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.PRECONDITION_REQUIRED,
+            "Send the promotion's ETag from your last GET in an If-Match header",
+        ),
+        null,
+    )
+
 @RestControllerAdvice
 class ApiExceptionHandler {
     /** Someone else changed the promotion between our read and our write. */

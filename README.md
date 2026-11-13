@@ -60,7 +60,7 @@ Or run the whole system in containers, then check the full flow:
 ```bash
 ./scripts/dev-jwt.sh keys                     # once, as above
 docker compose --profile apps up -d --build   # builds both images from the shared Dockerfile
-./scripts/smoke-test.sh                       # promotion created -> store tasks appear; cancelled -> cleared; access checks
+./scripts/smoke-test.sh                       # create -> tasks appear; edit (add a store) -> its tasks appear; cancel -> cleared
 ```
 
 CI runs the same smoke test on every push, after the tests pass.
@@ -83,6 +83,7 @@ without the right access a `403`.
 | `POST` | `/promotions` | Create a promotion; `201` with a `Location` header |
 | `GET` | `/promotions/{id}` | One promotion |
 | `GET` | `/promotions?from=2026-11-16` | Running on that day or starting later, soonest first; `from` defaults to today (Europe/Amsterdam) |
+| `PUT` | `/promotions/{id}` | Change a promotion; needs `If-Match` with the `ETag` from the last read (see below) |
 | `POST` | `/promotions/{id}/cancel` | Cancel; idempotent |
 
 ```bash
@@ -93,6 +94,12 @@ curl -i localhost:8081/promotions -H "Authorization: Bearer $TOKEN" -H 'Content-
   "storeIds": ["store-1001", "store-1002"], "productIds": ["product-42"]
 }'
 ```
+
+Responses for a single promotion carry its version as an `ETag`. A `PUT` must send it back in
+`If-Match`: without it the answer is `428`, and if someone changed the promotion since your read, `412`,
+so a change based on an old read can't silently overwrite a newer one. Once a promotion has started,
+only its end date and stores can change (`409` otherwise): the labels are already on the shelves, so
+anything else means cancelling it and creating a new one.
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`application/problem+json`):
 `400` for invalid input or a broken business rule (with the reason in `detail`), `404` for an unknown id,
@@ -146,6 +153,23 @@ Transient failures (database briefly unavailable, a concurrent update) are retri
 - **Instead of:** retrying forever, where one bad message blocks every promotion behind it on its partition; or logging and skipping, where it's silently lost.
 - **Compatibility:** unknown fields in an event are ignored, and unknown event types are skipped rather than dead-lettered, so promotion-service can add to the contract without breaking this consumer first. All of this is covered by integration tests against real Kafka.
 
+### Changing a promotion: rules on one side, reconciliation on the other
+
+An update publishes an `UPDATED` event that carries the promotion's **complete new state**, not what
+changed. store-task-service compares it with the tasks it has: added stores get tasks, removed stores
+are handled like a cancellation for that store, open tasks follow the new dates and label, and done
+tasks are left alone.
+
+- **Instead of:** an event per kind of change (`STORES_ADDED`, `DATES_CHANGED`, ...). That needs a new
+  event type and consumer code for every new kind of edit, and a consumer that missed one event is out
+  of step for good. With full state, each event is enough on its own.
+- **Rules where the knowledge is:** promotion-service refuses changes stores can't follow, such as a new
+  label on a promotion that's already on the shelves. So the consumer never has to invent a "relabel"
+  task for a case that can't happen.
+- **Evolving the contract:** `UPDATED` is a new event type. Consumers skip types they don't know (by the
+  `event-type` header), so the safe order is to deploy store-task-service first, then promotion-service.
+  Deployed the other way round, updates would be skipped, not crash anything.
+
 ### A database per service
 
 Each service owns its own database. They share nothing but the event contract in the `events` module, which has no framework dependencies.
@@ -197,7 +221,7 @@ I built this project with [Claude Code](https://claude.com/claude-code), Anthrop
 ## Roadmap
 
 - [x] Promotion API: create, get, list, cancel, with validation (`promotion-service`)
-- [ ] Update a promotion (`PUT` with optimistic locking through `If-Match`)
+- [x] Update a promotion (`PUT` with optimistic locking through `If-Match`; `UPDATED` events reconciled into store tasks)
 - [x] Flyway migration for `promotion-service`
 - [x] Flyway migration for `store-task-service`
 - [x] Publish `PromotionEvent` on schedule / cancel

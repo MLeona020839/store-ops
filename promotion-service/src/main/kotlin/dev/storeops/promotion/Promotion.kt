@@ -86,6 +86,25 @@ data class Promotion(
 
     fun cancel(): Promotion = copy(status = PromotionStatus.CANCELLED)
 
+    /**
+     * This promotion with the terms (everything a client can set) of [other]; identity, status,
+     * version and timestamps stay. The constructor checks the result's rules again.
+     */
+    fun withTermsOf(other: Promotion): Promotion =
+        copy(
+            title = other.title,
+            label = other.label,
+            kind = other.kind,
+            percent = other.percent,
+            priceCents = other.priceCents,
+            buy = other.buy,
+            pay = other.pay,
+            validFrom = other.validFrom,
+            validUntil = other.validUntil,
+            stores = other.stores,
+            products = other.products,
+        )
+
     private companion object {
         val HUNDRED = BigDecimal(100)
     }

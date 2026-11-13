@@ -122,6 +122,33 @@ class PromotionEventConsumptionTest(
         assertEquals(0, tasks.findAllByPromotionId(unknownType.promotionId).size)
     }
 
+    @Test
+    fun `an updated promotion moves, creates and cancels tasks to match`() {
+        val original = scheduled(storeIds = listOf("store-1001", "store-1002"))
+        send(original)
+        eventually("original tasks") { tasks.findAllByPromotionId(original.promotionId).takeIf { it.size == 4 } }
+
+        // Runs a week longer, store 1002 drops out and store 3003 joins.
+        send(
+            original.copy(
+                eventId = UUID.randomUUID(),
+                type = PromotionEventType.UPDATED,
+                storeIds = listOf("store-1001", "store-3003"),
+                validUntil = original.validUntil.plusDays(7),
+                occurredAt = Instant.parse("2026-11-12T09:00:00Z"),
+            ),
+        )
+
+        val all = eventually("tasks updated") { tasks.findAllByPromotionId(original.promotionId).takeIf { it.size == 6 } }
+        val byStore = all.groupBy { it.storeId }
+        assertEquals(
+            original.validUntil.plusDays(8),
+            byStore.getValue("store-1001").single { it.action == TaskAction.TAKE_DOWN_LABELS }.dueDate,
+        )
+        assertTrue(byStore.getValue("store-1002").all { it.status == TaskStatus.CANCELLED })
+        assertTrue(byStore.getValue("store-3003").all { it.status == TaskStatus.OPEN })
+    }
+
     private fun scheduled(storeIds: List<String> = listOf("store-1001")) =
         PromotionEvent(
             eventId = UUID.randomUUID(),

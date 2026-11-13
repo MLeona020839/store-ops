@@ -59,6 +59,12 @@ data class StoreTask(
             TaskStatus.CANCELLED -> throw IllegalStateException("Task $id was cancelled and can't be completed")
         }
 
+    /** A cancelled task wanted again, e.g. its store was removed from a promotion and then added back. */
+    fun reopen(): StoreTask {
+        check(status == TaskStatus.CANCELLED) { "Only a cancelled task can be reopened, this one is $status" }
+        return copy(status = TaskStatus.OPEN)
+    }
+
     /** Moves the due date forward to [date] if it's later; never pushes it back. */
     fun dueNoLaterThan(date: LocalDate): StoreTask = if (dueDate.isAfter(date)) copy(dueDate = date) else this
 }

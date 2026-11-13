@@ -15,6 +15,14 @@ enum class PromotionEventType {
 
     /** A promotion was cancelled before or during its run; stores need to restore regular labels. */
     CANCELLED,
+
+    /**
+     * A scheduled promotion was changed. The event carries the promotion's complete new state
+     * (not a diff), so a consumer can compare it with what it has and doesn't depend on having
+     * seen every earlier change. Added after SCHEDULED and CANCELLED: consumers that don't know
+     * it yet skip it by its event-type header, so store-task-service is deployed first.
+     */
+    UPDATED,
 }
 
 /**

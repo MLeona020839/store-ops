@@ -12,11 +12,11 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * Request body for creating a promotion. The annotations bound the input (sizes, column
+ * Request body for creating or replacing a promotion. The annotations bound the input (sizes, column
  * ranges); the business rules live in [Promotion] and are reported as 400 by [toPromotion].
  * Missing required fields or an unknown `kind` are rejected by Jackson before this is built.
  */
-data class CreatePromotionRequest(
+data class PromotionRequest(
     @field:NotBlank @field:Size(max = 200) val title: String,
     @field:NotBlank @field:Size(max = 100) val label: String,
     val kind: PromotionKind,
@@ -36,7 +36,9 @@ data class CreatePromotionRequest(
                 title = title.trim(),
                 label = label.trim(),
                 kind = kind,
-                percent = percent,
+                // Same scale as the numeric(5, 2) column, so 25 and 25.00 compare equal when
+                // checking whether an update changes anything. @Digits guarantees no rounding.
+                percent = percent?.setScale(2),
                 priceCents = priceCents,
                 buy = buy,
                 pay = pay,
