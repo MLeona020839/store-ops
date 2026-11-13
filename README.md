@@ -2,14 +2,13 @@
 
 [![CI](https://github.com/MLeona020839/store-ops/actions/workflows/ci.yml/badge.svg)](https://github.com/MLeona020839/store-ops/actions/workflows/ci.yml)
 
-> TODO: one sentence on what this does, e.g. *Event-driven microservices that turn weekly
-> supermarket promotions into shelf-label tasks for store employees.*
+Event-driven Kotlin microservices that turn weekly supermarket promotions into shelf-label tasks for store employees.
 
 ## The problem
 
-<!-- TODO: 3–5 sentences in your own words. Who is the user (a store employee),
-what goes wrong today (labels changed late, missed products, paper lists),
-and what this system does about it. -->
+Every week, supermarket store employees replace shelf labels for new promotions. It's easy to miss a label or put it up late, and then the price on the shelf doesn't match the price at the checkout, which leads to customer complaints.
+
+store-ops gives each store a daily list of the labels to change: which labels go up when a promotion starts, and which come down when it ends.
 
 ## Architecture
 
@@ -111,22 +110,64 @@ automatically when Docker isn't available and always run in CI.
 
 ## Design decisions
 
-<!-- TODO: this section is what interviewers read most closely. For each decision:
-what you chose, what you considered instead, and why. Candidates as you build them: -->
+### Transactional outbox (promotion-service)
 
-- **Database per service** – <!-- why not one shared database? -->
-- **Spring Data JDBC instead of JPA** – <!-- immutable Kotlin data classes, no lazy loading surprises -->
-- **Idempotent consumer** – <!-- Kafka is at-least-once; how do duplicates get ignored? (eventId) -->
-- **Transactional outbox** – <!-- what goes wrong if you save to the DB and then publish to Kafka? -->
-- **Dead-letter topic** – <!-- what happens to an event that can never be processed? -->
+promotion-service never sends to Kafka directly. When a promotion is created or cancelled, its event is written to an `outbox` table **in the same database transaction** as the change. `OutboxRelay` then sends pending rows to Kafka and marks them published once Kafka has acknowledged them.
+
+- **Instead of:** saving the promotion, then sending the event. If the service crashes between the two steps, the promotion exists but the event is lost. Sending first has the opposite problem: stores get tasks for a promotion that was never saved.
+- **Trade-off:** delivery is *at least once*. If the relay crashes after Kafka acknowledged a message but before marking the row, the message is sent again on restart. The consumer has to handle duplicates (next decision). Losing an event can't be fixed afterwards; a duplicate can.
+- **Details:** rows are ordered by a sequence, not by `created_at` (which is the same for everything in one transaction). `FOR UPDATE SKIP LOCKED` lets several instances run the relay without sending the same rows twice. Messages are keyed by promotion id, so one promotion's events stay in order on one partition.
+
+### Idempotent consumer (store-task-service)
+
+Every event carries an `eventId`. store-task-service records it in a `processed_event` table in the same transaction as the task changes; a redelivered event finds its id and is skipped. A unique constraint on (promotion, store, action) is a second line of defence.
+
+- **Instead of:** Kafka's exactly-once transactions. They cover reading from and writing to Kafka, not the writes to PostgreSQL that matter here.
+- **Related:** due dates come from the event's `occurredAt`, never from the clock, so handling an event again gives the same result as the first time.
+
+### Dead-letter topic
+
+Transient failures (database briefly unavailable, a concurrent update) are retried three times, in place, so the partition keeps its order. After that, and immediately for messages that can't be parsed, the message goes to `promotion-events-dlt` with the error in its headers, and the consumer moves on.
+
+- **Instead of:** retrying forever, where one bad message blocks every promotion behind it on its partition; or logging and skipping, where it's silently lost.
+- **Compatibility:** unknown fields in an event are ignored, and unknown event types are skipped rather than dead-lettered, so promotion-service can add to the contract without breaking this consumer first. All of this is covered by integration tests against real Kafka.
+
+### A database per service
+
+Each service owns its own database. They share nothing but the event contract in the `events` module, which has no framework dependencies.
+
+- **Instead of:** one shared database, which makes joins easy but couples each service to the other's schema: neither can change its tables or be deployed on its own.
+- **Consequence:** store-task-service copies what it needs (title, label, products) from the events into its tasks, and ids owned by other systems are stored without foreign keys.
+
+### Optimistic locking
+
+Both aggregates carry a `@Version`. When two writes race, for example an employee completing a task while a cancellation event for the same promotion is being handled, the second write fails instead of silently overwriting the first.
+
+- In the API that becomes a `409 Conflict`; the client reloads and sees the current state.
+- In the consumer it's a transient failure: the retry reads the task again and applies the cancellation to what's there now. If the labels were already put up, the take-down is brought forward to the cancellation day.
+- **Instead of:** pessimistic locks (`SELECT ... FOR UPDATE`) held for the whole request. Conflicts here are rare, so paying for a lock on every write isn't worth it.
+
+### Rules in the database as well as in code
+
+The domain classes check their rules (dates in order, the fields each promotion kind needs), and the same rules exist as `CHECK` constraints in the Flyway migrations. Code gives clear error messages; the database is the last line of defence for anything that bypasses the code. One detail the tests pin down: a `CHECK` whose result is `NULL` *passes*, so the constraints test `IS NOT NULL` explicitly.
 
 ## How I used AI tools
 
-<!-- TODO: be specific and honest; this is a skill the role asks for. For example:
-- What I used Claude Code for (scaffolding, test cases, reviewing my Kafka config, ...)
-- Where it was wrong or overconfident, and how I caught it (tests, docs, reading the code)
-- What I deliberately wrote myself, and why
-- How CLAUDE.md keeps it consistent with this project's conventions -->
+I built this project with [Claude Code](https://claude.com/claude-code), Anthropic's coding agent, and I want to be upfront about it: **Claude Code wrote most of the code, tests and configuration.** I chose the role I'm applying for and the domain (it builds on my earlier project, grocery-agent, which compares supermarket promotions), set the order of the work, and approved every change before it was committed.
+
+### What it got wrong, and how that was caught
+
+- **A Kafka setting that would never have worked.** The first `docker-compose.yml` gave Kafka a plain-text `CLUSTER_ID`; Kafka requires a base64-encoded UUID. It was caught before running, on a second read of the config.
+- **A failure that only showed up in CI.** `docker compose` builds both images in parallel, and both Gradle builds shared one cache, so one timed out waiting for the other's lock. The CI smoke test failed, the logs showed why, and the fix was one line (`sharing=locked`).
+- **A naming mismatch between SQL and Kotlin.** The first migration stored promotion kinds in lower case, but Kotlin enums are stored by their upper-case names. It was caught while writing the entity, before anything was deployed, so the migration could still be changed.
+- **A confident statement that wasn't true.** In one summary it said a Docker change was still pending when there wasn't one. It corrected itself in the next message, but it's a reminder to check claims against the code, not to take them as given.
+
+### How I kept it honest
+
+- **Nothing counts as done until CI says so.** My machine has no Docker, so the integration tests (Testcontainers with real PostgreSQL and Kafka) and the smoke test only run in CI. Each step was pushed and only treated as finished once those tests had actually run and passed.
+- **Versions from the source, not from memory.** Library, plugin and image versions were looked up from start.spring.io, Maven Central, the Gradle plugin portal and Docker Hub rather than guessed.
+- **Tests at every level:** unit tests for the rules, slice tests for HTTP and SQL, integration tests against real infrastructure, and a full-flow smoke test against the containerised system.
+- **[CLAUDE.md](CLAUDE.md)** records the project's conventions (commands, module boundaries, migration rules), so each session starts from the same rules.
 
 ## Roadmap
 
