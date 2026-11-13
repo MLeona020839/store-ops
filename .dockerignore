@@ -1,0 +1,14 @@
+# Keep the build context small and free of local build output and secrets.
+.git
+.github
+.gradle
+.kotlin
+.idea
+**/build
+**/out
+*.iml
+.env*
+*.env
+docker
+README.md
+CLAUDE.md

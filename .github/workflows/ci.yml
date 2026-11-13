@@ -36,3 +36,25 @@ jobs:
         with:
           name: test-reports
           path: "**/build/reports/tests/"
+
+  # Builds both Docker images, starts the whole system with docker compose and runs the
+  # full flow over HTTP. Only after the tests pass: no point in packaging a failing build.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build images and start the system
+        run: docker compose --profile apps up -d --build
+
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh
+
+      - name: Show logs
+        if: failure()
+        run: docker compose --profile apps logs --no-color
+
+      - name: Stop the system
+        if: always()
+        run: docker compose --profile apps down --volumes

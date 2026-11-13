@@ -38,7 +38,7 @@ Each service owns its own database; they communicate only through Kafka.
 ## Tech stack
 
 Kotlin 2.3 · Spring Boot 4 · Spring Data JDBC · Flyway · PostgreSQL 18 · Apache Kafka 4 (KRaft) ·
-JUnit 5 · Testcontainers · ktlint · GitHub Actions
+JUnit 5 · Testcontainers · ktlint · Docker · GitHub Actions
 
 ## Running locally
 
@@ -51,6 +51,15 @@ docker compose up -d                          # PostgreSQL + Kafka
 ```
 
 Health checks: `curl localhost:8081/actuator/health`
+
+Or run the whole system in containers, then check the full flow:
+
+```bash
+docker compose --profile apps up -d --build   # builds both images from the shared Dockerfile
+./scripts/smoke-test.sh                       # promotion created -> store tasks appear; cancelled -> cleared
+```
+
+CI runs the same smoke test on every push, after the tests pass.
 
 Alternatively, run `TestPromotionServiceApplication` / `TestStoreTaskServiceApplication`
 from your IDE: they start the service against throwaway Testcontainers, no compose needed.
@@ -132,6 +141,6 @@ what you chose, what you considered instead, and why. Candidates as you build th
 - [x] Idempotent consumer + dead-letter topic
 - [x] Transactional outbox in `promotion-service`
 - [ ] Clean up published outbox rows after a retention period
-- [ ] Testcontainers integration test covering the full flow
-- [ ] Dockerfiles for both services
+- [x] Full-flow smoke test over HTTP against the containerised system (CI)
+- [x] Dockerfile for both services (shared, layered, non-root)
 - [ ] (Optional) Deploy to Azure Container Apps
