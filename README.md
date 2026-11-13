@@ -181,7 +181,7 @@ I built this project with [Claude Code](https://claude.com/claude-code), Anthrop
 - [ ] Authentication: employees only see and complete their own store's tasks
 - [x] Idempotent consumer + dead-letter topic
 - [x] Transactional outbox in `promotion-service`
-- [ ] Clean up published outbox rows after a retention period
+- [x] Clean up old rows: published outbox messages after 7 days, processed event ids after 30 days
 - [x] Full-flow smoke test over HTTP against the containerised system (CI)
 - [x] Dockerfile for both services (shared, layered, non-root)
 - [ ] (Optional) Deploy to Azure Container Apps

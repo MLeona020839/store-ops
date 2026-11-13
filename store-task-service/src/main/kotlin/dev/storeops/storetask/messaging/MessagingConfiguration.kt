@@ -9,11 +9,14 @@ import org.springframework.kafka.config.TopicBuilder
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer
 import org.springframework.kafka.listener.DefaultErrorHandler
+import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.util.backoff.FixedBackOff
 import tools.jackson.core.JacksonException
 import java.time.Duration
 
+/** @EnableScheduling runs ProcessedEventCleanup. */
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 class MessagingConfiguration {
     /**
      * What happens when handling a message throws. Spring Boot plugs this bean into the
