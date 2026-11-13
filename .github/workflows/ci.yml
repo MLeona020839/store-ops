@@ -45,6 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Create the development JWT key pair
+        run: ./scripts/dev-jwt.sh keys
+
       - name: Build images and start the system
         run: docker compose --profile apps up -d --build
 

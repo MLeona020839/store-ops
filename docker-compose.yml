@@ -1,6 +1,7 @@
 # Local environment.
 #   docker compose up -d                     PostgreSQL + Kafka; run the services with Gradle or the IDE
 #   docker compose --profile apps up -d --build   ...and both services as containers, the whole system
+#                                            (run scripts/dev-jwt.sh keys first: the services need its public key)
 # Image versions match the Testcontainers setup in each service's tests.
 services:
   postgres:
@@ -63,6 +64,10 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/promotions
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      # Trust tokens from scripts/dev-jwt.sh. Only the public key is mounted, never the private one.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_PUBLICKEYLOCATION: file:/keys/jwt-public.pem
+    volumes:
+      - ./.dev-keys/jwt-public.pem:/keys/jwt-public.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,6 +86,10 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/store_tasks
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      # Trust tokens from scripts/dev-jwt.sh. Only the public key is mounted, never the private one.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_PUBLICKEYLOCATION: file:/keys/jwt-public.pem
+    volumes:
+      - ./.dev-keys/jwt-public.pem:/keys/jwt-public.pem:ro
     depends_on:
       postgres:
         condition: service_healthy

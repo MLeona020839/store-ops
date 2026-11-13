@@ -8,8 +8,12 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.MediaType
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -23,11 +27,20 @@ import kotlin.test.assertEquals
  * The service is mocked, so these run without a database.
  */
 @WebMvcTest(PromotionController::class)
+@Import(SecurityConfiguration::class)
 class PromotionControllerTest(
     @Autowired private val mvc: MockMvc,
 ) {
     @MockitoBean
     private lateinit var service: PromotionService
+
+    // Required by the resource server configuration; the jwt() post-processor below bypasses it.
+    @MockitoBean
+    private lateinit var jwtDecoder: JwtDecoder
+
+    private val reader = jwt().authorities(SimpleGrantedAuthority("SCOPE_promotions:read"))
+    private val writer =
+        jwt().authorities(SimpleGrantedAuthority("SCOPE_promotions:read"), SimpleGrantedAuthority("SCOPE_promotions:write"))
 
     private val validBody =
         """
@@ -55,6 +68,7 @@ class PromotionControllerTest(
         val result =
             mvc
                 .post("/promotions") {
+                    with(writer)
                     contentType = MediaType.APPLICATION_JSON
                     content = validBody
                 }.andExpect {
@@ -76,6 +90,7 @@ class PromotionControllerTest(
     fun `reports a broken business rule as 400 with the reason`() {
         mvc
             .post("/promotions") {
+                with(writer)
                 contentType = MediaType.APPLICATION_JSON
                 content = bodyWith("validUntil" to "\"2026-11-10\"")
             }.andExpect {
@@ -96,6 +111,7 @@ class PromotionControllerTest(
         ).forEach { override ->
             mvc
                 .post("/promotions") {
+                    with(writer)
                     contentType = MediaType.APPLICATION_JSON
                     content = bodyWith(override)
                 }.andExpect {
@@ -115,6 +131,7 @@ class PromotionControllerTest(
         ).forEach { body ->
             mvc
                 .post("/promotions") {
+                    with(writer)
                     contentType = MediaType.APPLICATION_JSON
                     content = body
                 }.andExpect {
@@ -130,7 +147,7 @@ class PromotionControllerTest(
         val id = UUID.randomUUID()
         whenever(service.get(id)).thenThrow(PromotionNotFoundException(id))
 
-        mvc.get("/promotions/$id").andExpect {
+        mvc.get("/promotions/$id") { with(reader) }.andExpect {
             status { isNotFound() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.detail") { value("Promotion $id not found") }
@@ -139,7 +156,7 @@ class PromotionControllerTest(
 
     @Test
     fun `rejects an id that isn't a UUID`() {
-        mvc.get("/promotions/not-a-uuid").andExpect { status { isBadRequest() } }
+        mvc.get("/promotions/not-a-uuid") { with(reader) }.andExpect { status { isBadRequest() } }
     }
 
     @Test
@@ -147,11 +164,11 @@ class PromotionControllerTest(
         whenever(service.listCurrentAndUpcoming(LocalDate.of(2026, 11, 16))).thenReturn(listOf(promotion()))
         whenever(service.listCurrentAndUpcoming(null)).thenReturn(emptyList())
 
-        mvc.get("/promotions?from=2026-11-16").andExpect {
+        mvc.get("/promotions?from=2026-11-16") { with(reader) }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
         }
-        mvc.get("/promotions").andExpect {
+        mvc.get("/promotions") { with(reader) }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(0) }
         }
@@ -162,7 +179,7 @@ class PromotionControllerTest(
         val cancelled = promotion().cancel()
         whenever(service.cancel(cancelled.id)).thenReturn(cancelled)
 
-        mvc.post("/promotions/${cancelled.id}/cancel").andExpect {
+        mvc.post("/promotions/${cancelled.id}/cancel") { with(writer) }.andExpect {
             status { isOk() }
             jsonPath("$.status") { value("CANCELLED") }
         }
@@ -173,9 +190,28 @@ class PromotionControllerTest(
         val id = UUID.randomUUID()
         whenever(service.cancel(id)).thenThrow(OptimisticLockingFailureException("stale version"))
 
-        mvc.post("/promotions/$id/cancel").andExpect {
+        mvc.post("/promotions/$id/cancel") { with(writer) }.andExpect {
             status { isConflict() }
             jsonPath("$.status") { value(409) }
         }
+    }
+
+    @Test
+    fun `requires a token`() {
+        mvc.get("/promotions").andExpect { status { isUnauthorized() } }
+        mvc.post("/promotions/${UUID.randomUUID()}/cancel").andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `reading needs promotions-read and changing needs promotions-write`() {
+        mvc.get("/promotions") { with(jwt()) }.andExpect { status { isForbidden() } }
+        mvc
+            .post("/promotions") {
+                with(reader)
+                contentType = MediaType.APPLICATION_JSON
+                content = validBody
+            }.andExpect { status { isForbidden() } }
+        mvc.post("/promotions/${UUID.randomUUID()}/cancel") { with(reader) }.andExpect { status { isForbidden() } }
+        verify(service, never()).create(any())
     }
 }

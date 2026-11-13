@@ -21,3 +21,6 @@ out/
 *.env
 .env*
 application-local.properties
+
+# Development JWT keys (scripts/dev-jwt.sh); the private key must never be committed
+.dev-keys/

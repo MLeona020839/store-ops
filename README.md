@@ -36,7 +36,7 @@ Each service owns its own database; they communicate only through Kafka.
 
 ## Tech stack
 
-Kotlin 2.3 · Spring Boot 4 · Spring Data JDBC · Flyway · PostgreSQL 18 · Apache Kafka 4 (KRaft) ·
+Kotlin 2.3 · Spring Boot 4 · Spring Security (OAuth2 resource server) · Spring Data JDBC · Flyway · PostgreSQL 18 · Apache Kafka 4 (KRaft) ·
 JUnit 5 · Testcontainers · ktlint · Docker · GitHub Actions
 
 ## Running locally
@@ -44,28 +44,39 @@ JUnit 5 · Testcontainers · ktlint · Docker · GitHub Actions
 Requirements: JDK 21 and Docker.
 
 ```bash
+./scripts/dev-jwt.sh keys                     # once: a local key pair for signing development tokens
 docker compose up -d                          # PostgreSQL + Kafka
-./gradlew :promotion-service:bootRun          # http://localhost:8081
-./gradlew :store-task-service:bootRun         # http://localhost:8082
+./gradlew :promotion-service:bootRun --args='--spring.profiles.active=dev'    # http://localhost:8081
+./gradlew :store-task-service:bootRun --args='--spring.profiles.active=dev'   # http://localhost:8082
 ```
+
+The `dev` profile makes the services trust tokens signed with that local key. The private key stays
+in `.dev-keys/` (git-ignored); the services only ever see the public key.
 
 Health checks: `curl localhost:8081/actuator/health`
 
 Or run the whole system in containers, then check the full flow:
 
 ```bash
+./scripts/dev-jwt.sh keys                     # once, as above
 docker compose --profile apps up -d --build   # builds both images from the shared Dockerfile
-./scripts/smoke-test.sh                       # promotion created -> store tasks appear; cancelled -> cleared
+./scripts/smoke-test.sh                       # promotion created -> store tasks appear; cancelled -> cleared; access checks
 ```
 
 CI runs the same smoke test on every push, after the tests pass.
 
 Alternatively, run `TestPromotionServiceApplication` / `TestStoreTaskServiceApplication`
 from your IDE: they start the service against throwaway Testcontainers, no compose needed.
+They trust a throwaway signing key, though, so for calling the API use the `dev` profile above.
 
 ## API
 
-`promotion-service`:
+Both services are OAuth2 resource servers: every request needs a bearer token (JWT). In a real
+environment an identity provider issues them; locally, `scripts/dev-jwt.sh` does. Health and info
+endpoints stay open for the platform's probes. A missing or invalid token is a `401`, a valid one
+without the right access a `403`.
+
+`promotion-service`: reading needs the scope `promotions:read`, creating and cancelling `promotions:write`.
 
 | Method | Path | |
 |---|---|---|
@@ -75,7 +86,8 @@ from your IDE: they start the service against throwaway Testcontainers, no compo
 | `POST` | `/promotions/{id}/cancel` | Cancel; idempotent |
 
 ```bash
-curl -i localhost:8081/promotions -H 'Content-Type: application/json' -d '{
+TOKEN=$(./scripts/dev-jwt.sh token '"scope":"promotions:read promotions:write"')
+curl -i localhost:8081/promotions -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{
   "title": "Alle kipfilet", "label": "25% korting", "kind": "PERCENT_OFF", "percent": 25,
   "validFrom": "2026-11-16", "validUntil": "2026-11-22",
   "storeIds": ["store-1001", "store-1002"], "productIds": ["product-42"]
@@ -86,7 +98,8 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`
 `400` for invalid input or a broken business rule (with the reason in `detail`), `404` for an unknown id,
 `409` when the promotion was changed concurrently.
 
-`store-task-service` (every path is scoped to one store; another store's task is a `404`):
+`store-task-service`: an employee's token carries their store as a `store_id` claim, and every path must be for that store
+(otherwise `403`). Within their store, a task id from another store is a `404`.
 
 | Method | Path | |
 |---|---|---|
@@ -95,7 +108,8 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details (`
 | `POST` | `/stores/{storeId}/tasks/{taskId}/complete` | Mark done; idempotent. `409` if the task was cancelled |
 
 ```bash
-curl -s localhost:8082/stores/store-1001/tasks
+TOKEN=$(./scripts/dev-jwt.sh token '"store_id":"store-1001"')
+curl -s localhost:8082/stores/store-1001/tasks -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Testing
@@ -147,6 +161,17 @@ Both aggregates carry a `@Version`. When two writes race, for example an employe
 - In the consumer it's a transient failure: the retry reads the task again and applies the cancellation to what's there now. If the labels were already put up, the take-down is brought forward to the cancellation day.
 - **Instead of:** pessimistic locks (`SELECT ... FOR UPDATE`) held for the whole request. Conflicts here are rare, so paying for a lock on every write isn't worth it.
 
+### Access control in the filter chain
+
+Store employees may only see and complete their own store's tasks. That check sits in the security
+filter chain, matched against `/stores/{storeId}/**`, rather than in each controller method, so a new
+endpoint under that path can't forget it. Anything not explicitly allowed is denied, so a new endpoint
+elsewhere starts closed. The services only verify tokens; which issuer or key to trust is configuration,
+so the same code works with a local development key and with a real identity provider.
+
+- **Not done yet:** head-office users who may see every store, and checking the token's issuer and
+  audience, which comes with configuring a real identity provider.
+
 ### Rules in the database as well as in code
 
 The domain classes check their rules (dates in order, the fields each promotion kind needs), and the same rules exist as `CHECK` constraints in the Flyway migrations. Code gives clear error messages; the database is the last line of defence for anything that bypasses the code. One detail the tests pin down: a `CHECK` whose result is `NULL` *passes*, so the constraints test `IS NOT NULL` explicitly.
@@ -178,7 +203,7 @@ I built this project with [Claude Code](https://claude.com/claude-code), Anthrop
 - [x] Publish `PromotionEvent` on schedule / cancel
 - [x] Consume events and create tasks per store (`store-task-service`)
 - [x] Task API: list open tasks for a store, mark a task done
-- [ ] Authentication: employees only see and complete their own store's tasks
+- [x] Authentication: JWT resource servers; promotion scopes; employees only see and complete their own store's tasks
 - [x] Idempotent consumer + dead-letter topic
 - [x] Transactional outbox in `promotion-service`
 - [x] Clean up old rows: published outbox messages after 7 days, processed event ids after 30 days
